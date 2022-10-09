@@ -1,61 +1,30 @@
 const axios = require("axios")
-const ethers = require("ethers")
+const { JsonRpcProviderWithFinalizedEvents } = require("./src/provider");
+const { connectToDatabase } = require("./src/mongodb");
+const { getEIP4844Tx } = require("./src/utils");
 
-class JsonRpcProviderWithFinalizedEvents extends ethers.providers.JsonRpcProvider {
-    async on(eventName, callback) {
-        if (eventName === "finalized") {
-            let pendingBlocks = new Set()
-
-            super.on("block", async (blockNumber) => {
-                pendingBlocks.add(blockNumber)
-
-                const final = await super.getBlock("finalized")
-
-                console.log("final", final.number)
-                console.log("pendingBlocks", pendingBlocks)
-
-                let pendingFinalized = final.number
-                while (pendingBlocks.has(pendingFinalized)) {
-                    super.emit("finalized", pendingFinalized)
-                    callback(pendingFinalized)
-                    pendingBlocks.delete(pendingFinalized)
-                    pendingFinalized--
-                }
-            });
-        } else {
-            super.on(eventName, calback)
-        }
-
-
-    }
-}
+const provider = new JsonRpcProviderWithFinalizedEvents("http://localhost:8545")
 
 async function main() {
 
     let latestFinalizedSlot = 1
 
-    const provider = new JsonRpcProviderWithFinalizedEvents("http://localhost:8545")
-
-    function getEIP4844Tx(hash) {
-        return provider.send("eth_getTransactionByHash", [hash])
-    }
-
     provider.on("finalized", async (blockNumber) => {
         const currentExecutionBlock = await provider.getBlock(blockNumber)
 
         const blobTxs = (await Promise.all(
-            currentExecutionBlock.transactions.map(txHash => getEIP4844Tx(txHash)))).filter(
+            currentExecutionBlock.transactions.map(txHash => getEIP4844Tx(provider, txHash)))).filter(
                 tx => tx.blobVersionedHashes.length
             )
 
         if (blobTxs.length) {
             const currentSlot =
                 (await axios.get("http://localhost:3500/eth/v1/beacon/headers")).data
-                    .data[0].header.message.slot - 1;
+                    .data[0].header.message.slot;
 
             let matchBeaconBlock
             let i = currentSlot
-            while (!matchBeaconBlock && i > latestFinalizedSlot) {
+            while (i > latestFinalizedSlot) {
 
                 const beaconBlock = (
                     await axios.get(
@@ -67,24 +36,21 @@ async function main() {
 
                 if (beaconExecutionBlockHash === currentExecutionBlock.hash) {
                     matchBeaconBlock = beaconBlock
+                    break
                 }
+
                 i--
             }
 
             latestFinalizedSlot = currentSlot
 
-            const sidecarData = await axios.get(
-                `http://localhost:8080?slot=${i}`
-            )
-
-            console.log(matchBeaconBlock)
-            console.log(sidecarData)
-
-
-
+            const sidecarData = (
+                await axios.get(
+                    `http://localhost:3500/eth/v1/blobs/sidecar/${i}`
+                )
+            ).data.data;
 
             // confirm blobTxs === kekack256(blob_kzgs)
-
             // store all data in databse
         }
 
