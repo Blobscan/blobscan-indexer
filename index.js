@@ -1,13 +1,15 @@
 const axios = require("axios")
 const { JsonRpcProviderWithFinalizedEvents } = require("./src/provider");
 const { connectToDatabase } = require("./src/mongodb");
-const { getEIP4844Tx } = require("./src/utils");
+const { calculateVersionedHash, getEIP4844Tx, getBlobTx, generateCollectionData } = require("./src/utils");
 
 const provider = new JsonRpcProviderWithFinalizedEvents("http://localhost:8545")
 
 async function main() {
 
     let latestFinalizedSlot = 1
+
+    const { db } = await connectToDatabase()
 
     provider.on("finalized", async (blockNumber) => {
         const currentExecutionBlock = await provider.getBlock(blockNumber)
@@ -18,17 +20,17 @@ async function main() {
             )
 
         if (blobTxs.length) {
-            const currentSlot =
+            const headerSlot =
                 (await axios.get("http://localhost:3500/eth/v1/beacon/headers")).data
                     .data[0].header.message.slot;
 
             let matchBeaconBlock
-            let i = currentSlot
-            while (i > latestFinalizedSlot) {
+            let currentSlot = headerSlot
+            while (currentSlot > latestFinalizedSlot) {
 
                 const beaconBlock = (
                     await axios.get(
-                        `http://localhost:3500/eth/v2/beacon/blocks/${i}`
+                        `http://localhost:3500/eth/v2/beacon/blocks/${currentSlot}`
                     )
                 ).data.data;
 
@@ -39,21 +41,57 @@ async function main() {
                     break
                 }
 
-                i--
+                currentSlot--
             }
+            latestFinalizedSlot = headerSlot
 
-            latestFinalizedSlot = currentSlot
-
-            const sidecarData = (
+            const sidecar = (
                 await axios.get(
-                    `http://localhost:3500/eth/v1/blobs/sidecar/${i}`
+                    `http://localhost:3500/eth/v1/blobs/sidecar/${currentSlot}`
                 )
             ).data.data;
 
-            // confirm blobTxs === kekack256(blob_kzgs)
-            // store all data in databse
-        }
+            let insertFns = []
 
+            const blockDocument = {
+                number: currentExecutionBlock.number,
+                hash: currentExecutionBlock.hash,
+                timestamp: currentExecutionBlock.timestamp,
+                slot: currentSlot
+            }
+
+            insertFns.push(generateCollectionData(db, "blocks", blockDocument))
+
+            blobTxs.forEach((tx, index) => {
+                const txDocument = {
+                    hash: tx.hash,
+                    block: currentExecutionBlock.number,
+                    from: tx.from,
+                    to: tx.to,
+                    index
+                }
+
+                insertFns.push(generateCollectionData(db, "txs", txDocument))
+            })
+
+            sidecar.blobs.forEach((blob, index) => {
+                const commitment = matchBeaconBlock.message.body.blob_kzgs[index]
+                const versionedHash = calculateVersionedHash(commitment)
+                const tx = getBlobTx(blobTxs, versionedHash)
+
+                const blobDocument = {
+                    hash: versionedHash,
+                    commitment,
+                    data: blob,
+                    tx: tx.hash,
+                    index
+                }
+
+                insertFns.push(generateCollectionData(db, "blobs", blobDocument))
+            })
+
+            await Promise.all(insertFns)
+        }
     });
 }
 
