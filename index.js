@@ -19,7 +19,7 @@ async function main() {
 
         const blobTxs = (await Promise.all(
             currentExecutionBlock.transactions.map(txHash => getEIP4844Tx(provider, txHash)))).filter(
-                tx => tx.blobVersionedHashes.length
+                tx => tx.blobVersionedHashes && tx.blobVersionedHashes.length
             )
 
         if (blobTxs.length) {
