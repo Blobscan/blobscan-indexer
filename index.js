@@ -3,7 +3,10 @@ const { JsonRpcProviderWithFinalizedEvents } = require("./src/provider");
 const { connectToDatabase } = require("./src/mongodb");
 const { calculateVersionedHash, getEIP4844Tx, getBlobTx, generateCollectionData } = require("./src/utils");
 
-const provider = new JsonRpcProviderWithFinalizedEvents("http://localhost:8545")
+const EXECUTION_NODE_RPC = process.env.EXECUTION_NODE_URL || "http://localhost:8545"
+const BEACON_NODE_RPC = process.env.BEACON_NODE_RPC || "http://localhost:3500"
+
+const provider = new JsonRpcProviderWithFinalizedEvents(EXECUTION_NODE_RPC)
 
 async function main() {
 
@@ -16,12 +19,12 @@ async function main() {
 
         const blobTxs = (await Promise.all(
             currentExecutionBlock.transactions.map(txHash => getEIP4844Tx(provider, txHash)))).filter(
-                tx => tx.blobVersionedHashes.length
+                tx => tx.blobVersionedHashes && tx.blobVersionedHashes.length
             )
 
         if (blobTxs.length) {
             const headerSlot =
-                (await axios.get("http://localhost:3500/eth/v1/beacon/headers")).data
+                (await axios.get(`${BEACON_NODE_RPC}/eth/v1/beacon/headers`)).data
                     .data[0].header.message.slot;
 
             let matchBeaconBlock
@@ -30,7 +33,7 @@ async function main() {
 
                 const beaconBlock = (
                     await axios.get(
-                        `http://localhost:3500/eth/v2/beacon/blocks/${currentSlot}`
+                        `${BEACON_NODE_RPC}/eth/v2/beacon/blocks/${currentSlot}`
                     )
                 ).data.data;
 
@@ -47,7 +50,7 @@ async function main() {
 
             const sidecar = (
                 await axios.get(
-                    `http://localhost:3500/eth/v1/blobs/sidecar/${currentSlot}`
+                    `${BEACON_NODE_RPC}/eth/v1/blobs/sidecar/${currentSlot}`
                 )
             ).data.data;
 
