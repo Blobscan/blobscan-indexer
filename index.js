@@ -10,26 +10,24 @@ const provider = new JsonRpcProviderWithFinalizedEvents(EXECUTION_NODE_RPC)
 
 async function main() {
 
-    let latestFinalizedSlot = 1
+    let currentSlot = 0
 
     const { db } = await connectToDatabase()
 
-    provider.on("finalized", async (blockNumber) => {
-        const currentExecutionBlock = await provider.getBlock(blockNumber)
-
-        const blobTxs = (await Promise.all(
-            currentExecutionBlock.transactions.map(txHash => getEIP4844Tx(provider, txHash)))).filter(
-                tx => tx.blobVersionedHashes && tx.blobVersionedHashes.length
+    while(true) {
+        const latestBlock = (
+            await axios.get(
+                `${BEACON_NODE_RPC}/eth/v2/beacon/blocks/head`
             )
+        ).data.data
+        const headSlot = parseInt(latestBlock.message.slot, 10)
+        console.log(`Head slot ${headSlot}, current slot ${currentSlot}`)
 
-        if (blobTxs.length) {
-            const headerSlot =
-                (await axios.get(`${BEACON_NODE_RPC}/eth/v1/beacon/headers`)).data
-                    .data[0].header.message.slot;
+        while (currentSlot < headSlot) {
+            currentSlot++
 
-            let matchBeaconBlock
-            let currentSlot = headerSlot
-            while (currentSlot > latestFinalizedSlot) {
+            try {
+                console.log(`Reading slot ${currentSlot}`)
 
                 const beaconBlock = (
                     await axios.get(
@@ -37,65 +35,79 @@ async function main() {
                     )
                 ).data.data;
 
-                const beaconExecutionBlockHash = beaconBlock.message.body.execution_payload.block_hash
-
-                if (beaconExecutionBlockHash === currentExecutionBlock.hash) {
-                    matchBeaconBlock = beaconBlock
-                    break
+                if (!beaconBlock.message.body.execution_payload) {
+                    continue
                 }
 
-                currentSlot--
+                const beaconExecutionBlockHash = beaconBlock.message.body.execution_payload.block_hash;
+                const currentExecutionBlock = await provider.getBlock(beaconExecutionBlockHash);
+
+                const blobTxs = (await Promise.all(
+                    currentExecutionBlock.transactions.map(txHash => getEIP4844Tx(provider, txHash)))).filter(
+                        tx => tx.blobVersionedHashes && tx.blobVersionedHashes.length
+                    )
+        
+                if (!blobTxs.length) {
+                    console.log(`No blobs found at slot ${currentSlot}`)
+                } else {
+                    console.log(`Found ${blobTxs.length} at slot ${currentSlot}`)
+
+                    const sidecar = (
+                        await axios.get(
+                            `${BEACON_NODE_RPC}/eth/v1/blobs/sidecar/${currentSlot}`
+                        )
+                    ).data.data;
+        
+                    let insertFns = []
+        
+                    const blockDocument = {
+                        number: currentExecutionBlock.number,
+                        hash: currentExecutionBlock.hash,
+                        timestamp: currentExecutionBlock.timestamp,
+                        slot: currentSlot
+                    }
+        
+                    insertFns.push(generateCollectionData(db, "blocks", blockDocument))
+        
+                    blobTxs.forEach((tx, index) => {
+                        const txDocument = {
+                            hash: tx.hash,
+                            block: currentExecutionBlock.number,
+                            from: tx.from,
+                            to: tx.to,
+                            index
+                        }
+        
+                        insertFns.push(generateCollectionData(db, "txs", txDocument))
+                    })
+        
+                    sidecar.blobs.forEach((blob, index) => {
+                        const commitment = beaconBlock.message.body.blob_kzgs[index]
+                        const versionedHash = calculateVersionedHash(commitment)
+                        const tx = getBlobTx(blobTxs, versionedHash)
+        
+                        const blobDocument = {
+                            hash: versionedHash,
+                            commitment,
+                            data: blob,
+                            tx: tx.hash,
+                            index
+                        }
+        
+                        insertFns.push(generateCollectionData(db, "blobs", blobDocument))
+                    })
+
+                    console.log(`Inserting ${insertFns.length} documents for slot ${currentSlot}`)
+                    await Promise.all(insertFns)
+                }
+            } catch(err) {
+                console.log(err)
             }
-            latestFinalizedSlot = headerSlot
-
-            const sidecar = (
-                await axios.get(
-                    `${BEACON_NODE_RPC}/eth/v1/blobs/sidecar/${currentSlot}`
-                )
-            ).data.data;
-
-            let insertFns = []
-
-            const blockDocument = {
-                number: currentExecutionBlock.number,
-                hash: currentExecutionBlock.hash,
-                timestamp: currentExecutionBlock.timestamp,
-                slot: currentSlot
-            }
-
-            insertFns.push(generateCollectionData(db, "blocks", blockDocument))
-
-            blobTxs.forEach((tx, index) => {
-                const txDocument = {
-                    hash: tx.hash,
-                    block: currentExecutionBlock.number,
-                    from: tx.from,
-                    to: tx.to,
-                    index
-                }
-
-                insertFns.push(generateCollectionData(db, "txs", txDocument))
-            })
-
-            sidecar.blobs.forEach((blob, index) => {
-                const commitment = matchBeaconBlock.message.body.blob_kzgs[index]
-                const versionedHash = calculateVersionedHash(commitment)
-                const tx = getBlobTx(blobTxs, versionedHash)
-
-                const blobDocument = {
-                    hash: versionedHash,
-                    commitment,
-                    data: blob,
-                    tx: tx.hash,
-                    index
-                }
-
-                insertFns.push(generateCollectionData(db, "blobs", blobDocument))
-            })
-
-            await Promise.all(insertFns)
         }
-    });
+
+        const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+        await delay(1000)
+    }
 }
 
 main()
