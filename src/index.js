@@ -72,7 +72,7 @@ async function main() {
           if (!sidecar || !sidecar.blobs.length) {
             console.log(`No blobs data found on sidecar at ${currentSlot}`);
           } else {
-            console.log(`Found ${sidecar.length} at slot ${currentSlot}`);
+            console.log(`Found ${sidecar.blobs.length} at slot ${currentSlot}`);
 
             let insertFns = [];
 
