@@ -69,7 +69,7 @@ async function main() {
             )
           ).data.data;
 
-          if (!sidecar.length) {
+          if (!sidecar || !sidecar.blobs.length) {
             console.log(`No blobs data found on sidecar at ${currentSlot}`);
           } else {
             console.log(`Found ${sidecar.length} at slot ${currentSlot}`);
