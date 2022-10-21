@@ -78,6 +78,7 @@ async function main() {
 
             const blockDocument = {
               ...currentExecutionBlock,
+              _id: currentExecutionBlock.hash,
               slot: currentSlot,
             };
 
@@ -86,6 +87,7 @@ async function main() {
             blobTxs.forEach((tx, index) => {
               const txDocument = {
                 ...tx,
+                _id: tx.hash,
                 index,
                 block: currentExecutionBlock.number,
               };
@@ -99,6 +101,7 @@ async function main() {
               const tx = getBlobTx(blobTxs, versionedHash);
 
               const blobDocument = {
+                _id: versionedHash,
                 hash: versionedHash,
                 commitment,
                 data: blob,
