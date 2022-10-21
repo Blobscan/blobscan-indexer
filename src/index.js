@@ -101,7 +101,7 @@ async function main() {
               const tx = getBlobTx(blobTxs, versionedHash);
 
               const blobDocument = {
-                _id: versionedHash,
+                _id: `${tx.hash}-${index}`,
                 hash: versionedHash,
                 commitment,
                 data: blob,
