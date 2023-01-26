@@ -7,7 +7,7 @@ function getEIP4844Tx(provider, hash) {
 }
 
 function calculateVersionedHash(commitment) {
-    return BLOB_COMMITMENT_VERSION_KZG + utils.keccak256(commitment).slice(4)
+    return BLOB_COMMITMENT_VERSION_KZG + utils.sha256(commitment).slice(4)
 }
 
 function getBlobTx(blobTxs, versionedHash) {
