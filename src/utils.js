@@ -11,7 +11,9 @@ function calculateVersionedHash(commitment) {
 }
 
 function getBlobTx(blobTxs, versionedHash) {
-    return blobTxs.find(tx => tx.blobVersionedHashes.includes(versionedHash))
+    return blobTxs.find(tx => {
+        return tx.blobVersionedHashes.includes(versionedHash)
+    })
 }
 
 function generateCollectionData(db, name, document) {
