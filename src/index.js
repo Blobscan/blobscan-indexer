@@ -32,11 +32,18 @@ async function main() {
       try {
         console.log(`Reading slot ${currentSlot}`);
 
-        const beaconBlock = (
-          await axios.get(
-            `${BEACON_NODE_RPC}/eth/v2/beacon/blocks/${currentSlot}`
-          )
-        ).data.data;
+        let beaconBlock;
+        try {
+          beaconBlock = (
+            await axios.get(
+              `${BEACON_NODE_RPC}/eth/v2/beacon/blocks/${currentSlot}`
+            )
+          ).data.data;
+        } catch (e) {
+          console.log(`No block found at slot ${currentSlot}`);
+
+          continue;
+        }
 
         if (!beaconBlock.message.body.execution_payload) {
           continue;
@@ -65,7 +72,7 @@ async function main() {
 
           const sidecar = (
             await axios.get(
-              `${BEACON_NODE_RPC}/eth/v1/blobs/sidecar/${currentSlot}`
+              `${BEACON_NODE_RPC}/eth/v1/beacon/blobs_sidecars/${currentSlot}`
             )
           ).data.data;
 
@@ -96,7 +103,7 @@ async function main() {
             });
 
             sidecar.blobs.forEach((blob, index) => {
-              const commitment = beaconBlock.message.body.blob_kzgs[index];
+              const commitment = beaconBlock.message.body.blob_kzg_commitments[index];
               const versionedHash = calculateVersionedHash(commitment);
               const tx = getBlobTx(blobTxs, versionedHash);
 

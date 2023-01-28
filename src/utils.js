@@ -7,11 +7,13 @@ function getEIP4844Tx(provider, hash) {
 }
 
 function calculateVersionedHash(commitment) {
-    return BLOB_COMMITMENT_VERSION_KZG + utils.keccak256(commitment).slice(4)
+    return BLOB_COMMITMENT_VERSION_KZG + utils.sha256(commitment).slice(4)
 }
 
 function getBlobTx(blobTxs, versionedHash) {
-    return blobTxs.find(tx => tx.blobVersionedHashes.includes(versionedHash))
+    return blobTxs.find(tx => {
+        return tx.blobVersionedHashes.includes(versionedHash)
+    })
 }
 
 function generateCollectionData(db, name, document) {
