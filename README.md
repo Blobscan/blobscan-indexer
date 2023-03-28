@@ -1,5 +1,7 @@
 # Blobscan indexer <a href="#"><img align="right" src=".github/assets/blobi.jpeg" height="80px" /></a>
 
+**We are rewriting this piece of code into Rust. Check out [this repo](https://github.com/Blobscan/blobscan-indexer.rs) for more info.**
+
 Indexer for [Blobscan](https://github.com/Blobscan/blobscan) blockchain explorer that allows navigating the data of the [EIP-4844](https://www.eip4844.com) blobs.
 
 ## How it works?
