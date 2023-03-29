@@ -26,16 +26,6 @@ EXECUTION_NODE_RPC_URL=<execution-node-rpc-url>
 BEACON_NODE_RPC=<beacon-node-rpc-url>
 ```
 
-If you prefer to use docker we have created an image for the indexer at [blossomlabs/blobscan-indexer](https://hub.docker.com/repository/docker/blossomlabs/blobscan-indexer/general).
-
-### Docker
-
-A docker image is also provided which can be run as:
-
-```
-docker run -e MONGODB_URI=mongodb://blobscan:secret@mongo:27017 -e MONGODB_DB=blobscan blossomlabs/blobscan-indexer:master
-```
-
 # About Blossom Labs
 ![blossom labs](https://blossom.software/img/logo.svg)
 
